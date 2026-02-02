@@ -1268,3 +1268,7 @@ msgstr "1080"
 msgctxt "#33208"
 msgid "360"
 msgstr "360"
+
+msgctxt "#30900"
+msgid "Sync video versions"
+msgstr "Synchroniser les versions vidéo"

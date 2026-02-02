@@ -1201,3 +1201,7 @@ msgstr "1000.0 Mbps [por defecto]"
 msgctxt "#33233"
 msgid "30.0 Mbps"
 msgstr "30.0 Mbps"
+
+msgctxt "#30900"
+msgid "Sync video versions"
+msgstr "Sincronizar versiones de vídeo"

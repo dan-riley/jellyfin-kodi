@@ -1173,3 +1173,6 @@ msgctxt "#33245"
 msgid "384"
 msgstr "384"
 
+msgctxt "#30900"
+msgid "Sync video versions"
+msgstr "Sync video versions"
