@@ -3,6 +3,7 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 #################################################################################################
 
+from logging import root
 import os
 import xml.etree.ElementTree as etree
 from urllib.parse import urlencode
@@ -34,6 +35,7 @@ NODES = {
         ("all", None),
         ("recent", translate(30174)),
         ("inprogress", translate(30177)),
+        ('inprogressversions', translate(30176)),
         ("unwatched", translate(30189)),
         ("sets", 20434),
         ("genres", 135),
@@ -63,6 +65,7 @@ DYNNODES = {
         ("all", None),
         ("RecentlyAdded", translate(30174)),
         ("InProgress", translate(30177)),
+        ('inprogressversions', translate(30176)),
         ("Boxsets", translate(20434)),
         ("Favorite", translate(33168)),
         ("FirstLetter", translate(33171)),
@@ -405,10 +408,14 @@ class Views(object):
 
             xml_name = node[0]
             xml_label = node[1] or view["Name"]
+            xml_index = NODES[view["Media"]].index(node)
             file = os.path.join(folder, "%s.xml" % xml_name)
-            self.add_node(
-                NODES[view["Media"]].index(node), file, view, xml_name, xml_label
-            )
+
+            if xml_name == "inprogressversions":
+                path = self.window_inprogressversions(view)
+                self.add_dynamic_node(xml_index, file, view, xml_name, xml_label, path)
+            else:
+                self.add_node(xml_index, file, view, xml_name, xml_label)
 
     def node_tvshow(self, folder, view):
 
@@ -498,6 +505,20 @@ class Views(object):
             etree.SubElement(root, "order", {"direction": "ascending"}).text = (
                 "sorttitle"
             )
+
+    def node_inprogressversions(self, root, path):
+        """Configure the XML node for in-progress movies with versions widget."""
+        for rule in root.findall(".//path"):
+            rule.text = path
+            break
+        else:
+            etree.SubElement(root, "path").text = path
+        
+        for rule in root.findall('.//content'):
+            rule.text = "movies"
+            break
+        else:
+            etree.SubElement(root, 'content').text = "movies"
 
     def node_nextepisodes(self, root, path):
 
@@ -783,7 +804,7 @@ class Views(object):
                             windex += 1
                     else:
                         for node in NODES[view["Media"]]:
-
+                            LOG.info("Window Nodes Adding node '%s' for view '%s'", node[0], view["Name"])
                             self.window_node(index, view, *node)
 
                             if view["Media"] in ("movies", "tvshows"):
@@ -831,6 +852,8 @@ class Views(object):
         """Leads to another listing of nodes."""
         if view["Media"] in ("homevideos", "photos"):
             path = self.window_browse(view, None if node in ("all", "browse") else node)
+        elif node == 'inprogressversions':
+            path = self.window_inprogressversions(view)
         elif node == "nextepisodes":
             path = self.window_nextepisodes(view)
         elif node == "music":
@@ -852,6 +875,7 @@ class Views(object):
         )
         node_label = node_label or view["Name"]
 
+        LOG.info("This node is '%s' for view '%s'", node, view["Name"])
         if node in ("all", "music"):
 
             window_prop = "Jellyfin.nodes.%s" % index
@@ -958,6 +982,16 @@ class Views(object):
     def window_music(self, view):
         return "library://music/"
 
+    def window_inprogressversions(self, view):
+        """Build the plugin URL for in-progress movies with versions."""
+        params = {
+            'id': view['Id'],
+            'mode': "inprogressversions",
+            'limit': self.limit
+        }
+        
+        return "%s?%s" % ("plugin://plugin.video.jellyfin/", urlencode(params))
+
     def window_nextepisodes(self, view):
 
         params = {"id": view["Id"], "mode": "nextepisodes", "limit": self.limit}
@@ -989,6 +1023,9 @@ class Views(object):
             "inprogress.title",
             "inprogress.content",
             "inprogress.path",
+            "inprogressversions.title",
+            "inprogressversions.content",
+            "inprogressversions.path",
             "nextepisodes.title",
             "nextepisodes.content",
             "nextepisodes.path",

@@ -113,6 +113,10 @@ msgctxt "#30175"
 msgid "Recently Added Episodes"
 msgstr "Recently Added Episodes"
 
+msgctxt "#30176"
+msgid "In Progress Movies (with versions)"
+msgstr "In Progress Movies (with versions)"
+
 msgctxt "#30177"
 msgid "In Progress Movies"
 msgstr "In Progress Movies"

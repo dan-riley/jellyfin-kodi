@@ -130,6 +130,8 @@ class Events(object):
             delete_item()
         elif mode == "refreshboxsets":
             event("SyncLibrary", {"Id": "Boxsets:Refresh"})
+        elif mode == "inprogressversions":
+            get_inprogress_versions(params["limit"])
         elif mode == "nextepisodes":
             get_next_episodes(params["id"], params["limit"])
         elif mode == "browse":
@@ -908,6 +910,171 @@ def get_video_extras(item_id, path, server_id=None, api_client=None):
                     xbmcplugin.addDirectoryItem(handle=PROCESS_HANDLE, url=dir, listitem=li, isFolder=True)
         #xbmcplugin.endOfDirectory(PROCESS_HANDLE)
     """
+
+def get_inprogress_versions(limit):
+    """Get in-progress movies including alternate versions for full widget option."""
+    """
+    import sqlite3
+    import xbmc
+    from xbmcvfs import translatePath
+    db_path = translatePath("special://database/MyVideos131.db")
+
+    LOG.info("db is at %s", db_path)
+
+    conn = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
+    conn.row_factory = sqlite3.Row
+    kodi_db = conn.cursor()
+    """
+
+    # Using with Database, OR li.getVideoInfoTag causes infinite refresh.
+    # Either manual database or use setInfo with warnings to work normally
+    # Ideally JSON RPC would add better calls for Video Versions
+
+    with Database("video") as videodb:
+        kodi_db = videodb.cursor
+
+        kodi_db.execute("""
+            SELECT *
+            FROM movie_view
+            WHERE resumeTimeInSeconds > 0
+            ORDER BY lastPlayed DESC
+            LIMIT ?
+        """, (limit,))
+
+        result = kodi_db.fetchall()
+        columns = [desc[0] for desc in kodi_db.description]
+
+        movies = [dict(zip(columns, row)) for row in result]
+
+        movie_ids = [row["idMovie"] for row in movies]
+        file_ids = [row["videoVersionIdFile"] for row in movies]
+
+        art_ids = ",".join(str(mid) for mid in movie_ids)
+        kodi_db.execute(f"""
+            SELECT media_id, type, url
+            FROM art
+            WHERE media_type='movie'
+            AND media_id IN ({art_ids})
+        """)
+
+        art_results = kodi_db.fetchall()
+        art_dict = {}
+        for media_id, type_, url in art_results:
+            art_dict.setdefault(media_id, {})[type_] = url
+
+        for movie in movies:
+            movie["art"] = art_dict.get(movie["idMovie"], {})
+
+        stream_ids = ",".join(str(fid) for fid in file_ids)
+        kodi_db.execute(f"""
+            SELECT *
+            FROM streamdetails
+            WHERE idFile IN ({stream_ids})
+        """)
+
+        stream_results = kodi_db.fetchall()
+        stream_columns = [desc[0] for desc in kodi_db.description]
+        streams_dict = [dict(zip(stream_columns, row)) for row in stream_results]
+
+        streams_by_file = {}
+
+        for stream_row in streams_dict:
+            file_id = stream_row["idFile"]
+            stream_type = stream_row["iStreamType"]
+            streams_by_file.setdefault(file_id, {}).setdefault(stream_type, []).append(stream_row)
+
+        for movie in movies:
+            row_streams = streams_by_file.get(movie["videoVersionIdFile"], {})
+
+            movie["streamdetails"] = {
+                "video": row_streams.get(0, []),
+                "audio": row_streams.get(1, []),
+                "subtitle": row_streams.get(2, []),
+            }
+
+    list_li = []
+    for movie in movies:
+        li = create_listitem_movie(movie)
+        strPath = ""
+        if settings("useDirectPaths") == "1":
+            strPath = movie["strPath"]
+
+        list_li.append((strPath + movie["strFileName"], li))
+
+    xbmcplugin.addDirectoryItems(PROCESS_HANDLE, list_li, len(list_li))
+    xbmcplugin.setContent(PROCESS_HANDLE, "movies")
+    xbmcplugin.endOfDirectory(PROCESS_HANDLE)
+
+
+def create_listitem_movie(item):
+    title = item["c00"]
+    if item["videoVersionTypeId"] != 40400:
+        title += " (" + item["videoVersionTypeName"] + ")"
+    label2 = item["videoVersionTypeName"]
+    li = xbmcgui.ListItem(title, offscreen=True)
+
+    li.setProperty("IsPlayable", "true")
+    li.setPath(item["strPath"])
+
+    li.setProperty("hasVideoVersions", "true" if item["hasVideoVersions"] else "false")
+    li.setProperty("videoVersionName", str(item["videoVersionTypeName"]))
+    li.setProperty("videoversion", str(item["videoVersionTypeId"]))
+
+    li.setArt(item["art"])
+    li.setLabel2(label2)
+
+    metadata = {
+        "Title": title,
+        "Plot": item["c01"],
+    }
+    li.setInfo(type="Video", infoLabels=metadata)
+    li.setProperty("resumetime", str(item["totalTimeInSeconds"]))
+    li.setProperty("totaltime", str(item["resumeTimeInSeconds"]))
+    li.setProperty("dbid", str(item["idMovie"]))
+
+    vi = li.getVideoInfoTag(offscreen=True)
+    vi.setDbId(item["idMovie"])
+    vi.setUniqueID(str(item["uniqueid_value"]), item["uniqueid_type"])
+
+    vi.setPlot(item["c01"])
+    vi.setMpaa(item["c12"])
+    vi.setPremiered(item["premiered"])
+    vi.setStudios([item["c18"]])
+    #vi.setRatings([item["ratings"]])
+    vi.setRating(float(item["rating"]))
+
+    vi.setResumePoint(float(item["resumeTimeInSeconds"]), float(item["totalTimeInSeconds"]))
+    vi.setGenres(item["c14"].split(" / "))
+    vi.setMediaType('movie')
+
+    for key, value in item["streamdetails"].items():
+        for stream in value:
+            if key == 'video':
+                v_obj = xbmc.VideoStreamDetail(
+                    int(stream["iVideoWidth"]),
+                    int(stream["iVideoHeight"]),
+                    float(stream["fVideoAspect"]),
+                    int(stream["iVideoDuration"]),
+                    stream["strVideoCodec"],
+                    stream["strStereoMode"],
+                    stream["strVideoLanguage"],
+                    stream["strHdrType"]
+                )
+                vi.addVideoStream(v_obj)
+
+            elif key == 'audio':
+                a_obj = xbmc.AudioStreamDetail(
+                    int(stream["iAudioChannels"]),
+                    stream["strAudioCodec"],
+                    stream["strAudioLanguage"]
+                )
+                vi.addAudioStream(a_obj)
+                
+            elif key == 'subtitle':
+                s_obj = xbmc.SubtitleStreamDetail(stream["strSubtitleLanguage"])
+                vi.addSubtitleStream(s_obj)
+
+    return li
 
 
 def get_next_episodes(item_id, limit):
