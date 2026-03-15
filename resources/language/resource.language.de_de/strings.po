@@ -1287,3 +1287,7 @@ msgstr "1000,0 Mbps [Standard]"
 msgctxt "#30900"
 msgid "Sync video versions"
 msgstr "Videoversionen synchronisieren"
+
+msgctxt "#30901"
+msgid "Sync video extras"
+msgstr "Synchronisierung von video-extras"

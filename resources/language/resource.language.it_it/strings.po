@@ -1270,3 +1270,7 @@ msgstr "384"
 msgctxt "#30900"
 msgid "Sync video versions"
 msgstr "Sincronizzare le versioni video"
+
+msgctxt "#30901"
+msgid "Sync video extras"
+msgstr "Sincronizzare gli extra video"
